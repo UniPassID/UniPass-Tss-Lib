@@ -1,0 +1,194 @@
+use aws_sdk_kms::types::Blob;
+use curv::{
+    elliptic::curves::{Point, Scalar, Secp256k1},
+    BigInt,
+};
+use error::LindellError;
+use keygen::{Li17SignP1Context, Li17SignP2Context};
+use multi_party_ecdsa::{
+    protocols::two_party_ecdsa::lindell_2017::party_one::generate_h1_h2_n_tilde,
+    utilities::zk_pdl_with_slack::{PDLwSlackProof, PDLwSlackStatement, PDLwSlackWitness},
+};
+use paillier::{DecryptionKey, EncryptionKey};
+use serde::{Deserialize, Serialize};
+use zk_paillier::zkproofs::{CompositeDLogProof, DLogStatement};
+
+#[derive(Serialize, Deserialize)]
+pub struct Party2Private {
+    pub x2: Scalar<Secp256k1>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Party1Private {
+    x1: Scalar<Secp256k1>,
+    paillier_priv: DecryptionKey,
+    c_key_randomness: BigInt,
+}
+
+pub mod error;
+pub mod keygen;
+pub mod sign;
+pub mod tests;
+
+const ETHPREFIX: &[u8; 26] = b"\x19Ethereum Signed Message:\n";
+
+pub fn keccak256(message: &[u8]) -> Vec<u8> {
+    use sha3::{Digest, Keccak256};
+    Keccak256::digest(message).to_vec()
+}
+
+pub fn hash_message(message: Vec<u8>) -> Vec<u8> {
+    let mut msg = Vec::from(ETHPREFIX.as_slice());
+    msg.extend_from_slice(message.len().to_string().as_bytes());
+    msg.extend_from_slice(&message);
+    keccak256(&msg)
+}
+
+#[derive(sqlx::FromRow)]
+pub struct EncryptedUPKey {
+    pub upkey_id: Vec<u8>,
+    pub user_id: i64,
+    pub email: String,
+    pub public: String,
+    pub public_p1: String,
+    pub public_p2: String,
+    pub p1_private: String,
+}
+
+impl EncryptedUPKey {
+    pub async fn new(
+        upkey_id: Vec<u8>,
+        user_id: i64,
+        email: String,
+        client: &aws_sdk_kms::Client,
+        key: &str,
+        sign_context: &Li17SignP1Context,
+    ) -> Result<EncryptedUPKey, LindellError> {
+        let plain_text = serde_json::to_string(&sign_context.p1_private)?;
+
+        let blob = Blob::new(plain_text.as_bytes());
+        let resp = client.encrypt().key_id(key).plaintext(blob).send().await?;
+
+        // Did we get an encrypted blob?
+        let blob = resp.ciphertext_blob.expect("Could not get encrypted text");
+        let bytes = blob.as_ref();
+        let encrypted_text = base64::encode(&bytes);
+
+        Ok(EncryptedUPKey {
+            upkey_id,
+            user_id,
+            email,
+            public: base64::encode(&sign_context.public.to_bytes(true).as_ref()),
+            public_p1: base64::encode(&sign_context.public_p1.to_bytes(true).as_ref()),
+            public_p2: base64::encode(&sign_context.public_p2.to_bytes(true).as_ref()),
+            p1_private: encrypted_text,
+        })
+    }
+
+    pub async fn into_sign_context(
+        &self,
+        client: &aws_sdk_kms::Client,
+        key: &str,
+    ) -> Result<Li17SignP1Context, LindellError> {
+        let encrypted_data = Blob::new(base64::decode(&self.p1_private)?);
+        let resp = client
+            .decrypt()
+            .key_id(key)
+            .ciphertext_blob(encrypted_data)
+            .send()
+            .await?;
+
+        let inner = resp.plaintext.unwrap();
+        let bytes = inner.as_ref();
+
+        let plain_text = String::from_utf8(bytes.to_vec())?;
+
+        Ok(Li17SignP1Context {
+            public: Point::<Secp256k1>::from_bytes(&base64::decode(&self.public)?)?,
+            public_p1: Point::<Secp256k1>::from_bytes(&base64::decode(&self.public_p1)?)?,
+            public_p2: Point::<Secp256k1>::from_bytes(&base64::decode(&self.public_p2)?)?,
+            p1_private: serde_json::from_str(&plain_text)?,
+        })
+    }
+}
+
+pub fn li17_p1_exract_secret(
+    sign_context: &Li17SignP1Context,
+) -> Result<Scalar<Secp256k1>, LindellError> {
+    let p1_private: Party1Private = unsafe { std::mem::transmute(sign_context.p1_private.clone()) };
+    return Ok(p1_private.x1);
+}
+
+pub fn li17_p2_exract_secret(
+    sign_context: &Li17SignP2Context,
+) -> Result<Scalar<Secp256k1>, LindellError> {
+    let p2_private: Party2Private =
+        serde_json::from_value(serde_json::to_value(&sign_context.p2_private)?)?;
+    return Ok(p2_private.x2);
+}
+
+pub fn pdl_proof(
+    x: Scalar<Secp256k1>,
+    c_key_randomness: BigInt,
+    ek: EncryptionKey,
+    encrypted_secret_share: BigInt,
+) -> (PDLwSlackStatement, PDLwSlackProof, CompositeDLogProof) {
+    let (n_tilde, h1, h2, xhi) = generate_h1_h2_n_tilde();
+    let dlog_statement = DLogStatement {
+        N: n_tilde,
+        g: h1,
+        ni: h2,
+    };
+    let composite_dlog_proof = CompositeDLogProof::prove(&dlog_statement, &xhi);
+
+    // Generate PDL with slack statement, witness and proof
+    let pdl_w_slack_statement = PDLwSlackStatement {
+        ciphertext: encrypted_secret_share,
+        ek,
+        Q: Point::generator() * &x,
+        G: Point::generator().to_point(),
+        h1: dlog_statement.g.clone(),
+        h2: dlog_statement.ni.clone(),
+        N_tilde: dlog_statement.N,
+    };
+
+    let pdl_w_slack_witness = PDLwSlackWitness {
+        x: x,
+        r: c_key_randomness,
+    };
+
+    let pdl_w_slack_proof = PDLwSlackProof::prove(&pdl_w_slack_witness, &pdl_w_slack_statement);
+    (
+        pdl_w_slack_statement,
+        pdl_w_slack_proof,
+        composite_dlog_proof,
+    )
+}
+
+pub fn pdl_verify(
+    composite_dlog_proof: &CompositeDLogProof,
+    pdl_w_slack_statement: &PDLwSlackStatement,
+    pdl_w_slack_proof: &PDLwSlackProof,
+    ek: EncryptionKey,
+    encrypted_secret_share: BigInt,
+    q: &Point<Secp256k1>,
+) -> Result<(), LindellError> {
+    if pdl_w_slack_statement.ek != ek
+        || pdl_w_slack_statement.ciphertext != encrypted_secret_share
+        || &pdl_w_slack_statement.Q != q
+    {
+        return Err(LindellError::SpecificError("pdl verify failed".to_string()));
+    }
+    let dlog_statement = DLogStatement {
+        N: pdl_w_slack_statement.N_tilde.clone(),
+        g: pdl_w_slack_statement.h1.clone(),
+        ni: pdl_w_slack_statement.h2.clone(),
+    };
+    if composite_dlog_proof.verify(&dlog_statement).is_ok()
+        && pdl_w_slack_proof.verify(pdl_w_slack_statement).is_ok()
+    {
+        Ok(())
+    } else {
+        return Err(LindellError::SpecificError("pdl verify failed".to_string()));
+    }
+}
