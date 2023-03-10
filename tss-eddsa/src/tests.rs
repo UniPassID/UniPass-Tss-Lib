@@ -4,6 +4,7 @@ mod tests {
     use ed25519_dalek::Verifier;
     use itertools::Itertools;
     use multi_party_eddsa::protocols::Signature;
+    use rand::{thread_rng, Rng};
 
     use crate::{
         keygen::{keygen_phase1, keygen_phase2, keygen_phase3, keygen_phase4},
@@ -53,7 +54,9 @@ mod tests {
             })
             .collect();
 
-        let message = [12u8, 34, 45, 76, 35];
+        let mut rng = thread_rng();
+
+        let message: [u8; 32] = rng.gen();
 
         for group in (1u16..=n).combinations(usize::from(t + 1)) {
             let group_indexs: Vec<_> = group.iter().map(|a| a - 1).collect();
