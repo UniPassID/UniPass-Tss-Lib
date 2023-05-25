@@ -2213,6 +2213,7 @@ version = "0.6.0"
 name = "tss-wasm"
 version = "0.6.0"
 dependencies = [
+ "base64 0.13.1",
  "console_error_panic_hook",
  "curv-kzen",
  "getrandom 0.1.16",

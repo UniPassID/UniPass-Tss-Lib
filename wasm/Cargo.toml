@@ -11,28 +11,29 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 mpc-ecdsa-getrandom-hack = { path = "./getrandom", version = "*" }
 getrandom = { version = "0.1.16", features = ["wasm-bindgen"] }
+rand = { version = "0.6.5", features = ["wasm-bindgen"] }
+
 curv-kzen = { version = "0.9", features = [
     "num-bigint",
 ], default-features = false }
-rand = { version = "0.6.5", features = ["wasm-bindgen"] }
 zk-paillier = { version = "0.4.3", git = "https://github.com/xcshuan/zk-paillier", default-features = false }
 console_error_panic_hook = "0.1.6"
-sha3 = "0.10"
+
 serde = { version = "1", features = ["derive"] }
-hex = "0.4"
 round-based = "0.1"
 sha2 = "0.9"
+sha3 = "0.10"
+hex = "0.4"
+log = "0.4"
+base64 = "0.13"
 
 # rand = {version = "0.8.5" }
 # getrandom = {version = "0.2", features = ["js"]}
 wasm-bindgen = { version = "0.2.83" }
 gloo-utils = "0.1.5"
-log = "0.4"
 wasm-log = "0.3"
 
-tss-eddsa = { path = "../tss-eddsa", features = [
-    "num-bigint",
-], default-features = false }
+tss-eddsa = { path = "../tss-eddsa" }
 
 [dependencies.paillier]
 version = "0.4.2"

@@ -26,6 +26,6 @@ rand_xoshiro = "0.6.0"
 itertools = "0.10"
 
 [features]
-default = ["curv/rust-gmp-kzen", "actix_web"]
-num-bigint = ["curv/num-bigint"]
+default = ["curv/num-bigint", "actix_web"]
+rust-gmp-kzen = ["curv/rust-gmp-kzen"]
 actix_web = ["actix-web"]
