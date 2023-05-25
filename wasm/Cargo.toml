@@ -1,6 +1,6 @@
 [package]
 name = "tss-wasm"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2018"
 license = "GPL-3.0-or-later"
 description = "Webassembly bindings to multi-party-ecdsa"

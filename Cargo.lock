@@ -2188,7 +2188,7 @@ dependencies = [
 
 [[package]]
 name = "tss-eddsa"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "actix-web",
  "base64 0.13.1",
@@ -2211,7 +2211,7 @@ version = "0.6.0"
 
 [[package]]
 name = "tss-wasm"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "base64 0.13.1",
  "console_error_panic_hook",
