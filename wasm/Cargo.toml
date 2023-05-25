@@ -20,7 +20,6 @@ console_error_panic_hook = "0.1.6"
 sha3 = "0.10"
 serde = { version = "1", features = ["derive"] }
 hex = "0.4"
-base64 = "0.13"
 round-based = "0.1"
 sha2 = "0.9"
 

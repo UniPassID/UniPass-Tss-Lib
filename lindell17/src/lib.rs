@@ -1,4 +1,3 @@
-use aws_sdk_kms::types::Blob;
 use curv::{
     elliptic::curves::{Point, Scalar, Secp256k1},
     BigInt,
@@ -42,74 +41,6 @@ pub fn hash_message(message: Vec<u8>) -> Vec<u8> {
     msg.extend_from_slice(message.len().to_string().as_bytes());
     msg.extend_from_slice(&message);
     keccak256(&msg)
-}
-
-#[derive(sqlx::FromRow)]
-pub struct EncryptedUPKey {
-    pub upkey_id: Vec<u8>,
-    pub user_id: i64,
-    pub email: String,
-    pub public: String,
-    pub public_p1: String,
-    pub public_p2: String,
-    pub p1_private: String,
-}
-
-impl EncryptedUPKey {
-    pub async fn new(
-        upkey_id: Vec<u8>,
-        user_id: i64,
-        email: String,
-        client: &aws_sdk_kms::Client,
-        key: &str,
-        sign_context: &Li17SignP1Context,
-    ) -> Result<EncryptedUPKey, LindellError> {
-        let plain_text = serde_json::to_string(&sign_context.p1_private)?;
-
-        let blob = Blob::new(plain_text.as_bytes());
-        let resp = client.encrypt().key_id(key).plaintext(blob).send().await?;
-
-        // Did we get an encrypted blob?
-        let blob = resp.ciphertext_blob.expect("Could not get encrypted text");
-        let bytes = blob.as_ref();
-        let encrypted_text = base64::encode(&bytes);
-
-        Ok(EncryptedUPKey {
-            upkey_id,
-            user_id,
-            email,
-            public: base64::encode(&sign_context.public.to_bytes(true).as_ref()),
-            public_p1: base64::encode(&sign_context.public_p1.to_bytes(true).as_ref()),
-            public_p2: base64::encode(&sign_context.public_p2.to_bytes(true).as_ref()),
-            p1_private: encrypted_text,
-        })
-    }
-
-    pub async fn into_sign_context(
-        &self,
-        client: &aws_sdk_kms::Client,
-        key: &str,
-    ) -> Result<Li17SignP1Context, LindellError> {
-        let encrypted_data = Blob::new(base64::decode(&self.p1_private)?);
-        let resp = client
-            .decrypt()
-            .key_id(key)
-            .ciphertext_blob(encrypted_data)
-            .send()
-            .await?;
-
-        let inner = resp.plaintext.unwrap();
-        let bytes = inner.as_ref();
-
-        let plain_text = String::from_utf8(bytes.to_vec())?;
-
-        Ok(Li17SignP1Context {
-            public: Point::<Secp256k1>::from_bytes(&base64::decode(&self.public)?)?,
-            public_p1: Point::<Secp256k1>::from_bytes(&base64::decode(&self.public_p1)?)?,
-            public_p2: Point::<Secp256k1>::from_bytes(&base64::decode(&self.public_p2)?)?,
-            p1_private: serde_json::from_str(&plain_text)?,
-        })
-    }
 }
 
 pub fn li17_p1_exract_secret(

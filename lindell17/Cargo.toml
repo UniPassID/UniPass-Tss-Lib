@@ -1,6 +1,6 @@
 [package]
 name = "lindell"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "GPL-3.0-or-later"
 
@@ -8,20 +8,13 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 thiserror = "1"
-getrandom = {version = "0.2.7", features = ["wasm-bindgen"]}
-curv-kzen = {version = "0.9", features = ["num-bigint"], default-features = false}
-rand = { version="0.6.5", features = ["wasm-bindgen"] }
-zk-paillier = { version = "0.4.3", default-features = false }
-console_error_panic_hook = "0.1.6"
 sha3 = "0.10"
-serde = {version = "1", features = ["derive"]}
-serde_json = "1"
 sha2 = "0.9"
-base64 = "0.13"
-aws-sdk-kms = "0.17.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
-actix-web = {version = "4.1.0", optional = true}
-sqlx = { version = "0.6.0", features = ["uuid", "runtime-actix-rustls"] }
+curv = { package = "curv-kzen", version = "0.9", default-features = false }
+zk-paillier = { version = "0.4.3", default-features = false }
 
 [dependencies.paillier]
 version = "0.4.2"
@@ -35,5 +28,5 @@ default-features = false
 version = "*"
 
 [features]
-default = []
-actix_web = ["actix-web"]
+default = ["curv/rust-gmp-kzen"]
+num-bigint = ["curv/num-bigint"]
